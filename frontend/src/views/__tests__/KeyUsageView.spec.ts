@@ -48,6 +48,9 @@ const messages: Record<string, string> = {
   'keyUsage.usedQuota': 'Used Quota',
   'keyUsage.subscriptionType': 'Subscription Type',
   'keyUsage.billingType': 'Billing Type',
+  'keyUsage.groupQuota': 'Group Account Quota',
+  'keyUsage.groupQuota5h': '5-Hour Remaining',
+  'keyUsage.groupQuota7d': '7-Day Remaining',
   'keyUsage.todayRequests': 'Today Requests',
   'keyUsage.todayInputTokens': 'Today Input',
   'keyUsage.todayOutputTokens': 'Today Output',
@@ -214,6 +217,56 @@ describe('KeyUsageView daily detail', () => {
     wrapper.unmount()
   })
 
+  it('renders the authenticated group quota summary', async () => {
+    const fetchMock = vi.mocked(fetch)
+    fetchMock.mockReset()
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          mode: 'quota_limited', isValid: true, status: 'active',
+          quota: { limit: 100, used: 28, remaining: 72, unit: 'USD' },
+          rate_limits: [
+            { window: '5h', used: 32, limit: 100, reset_at: null },
+            { window: '7d', used: 46, limit: 100, reset_at: null },
+          ],
+          usage: { today: {}, total: {}, rpm: 0, tpm: 0 }, daily_usage: [],
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ remaining_5h_percent: 62.5, remaining_7d_percent: 74.6 }),
+      } as Response)
+
+    const wrapper = mount(KeyUsageView, {
+      global: {
+        stubs: {
+          RouterLink: { template: '<a><slot /></a>' },
+          LocaleSwitcher: true,
+          Icon: true,
+        },
+      },
+    })
+
+    await wrapper.find('input').setValue('sk-test-key')
+    await wrapper.find('input').trigger('keydown.enter')
+    await flushPromises()
+    await nextTick()
+
+    expect(wrapper.text()).toContain('Group Account Quota')
+    expect(wrapper.text()).toContain('63%')
+    expect(wrapper.text()).toContain('75%')
+    expect(wrapper.text()).not.toContain('$72.00')
+    expect(wrapper.text()).not.toContain('$32.00 / $100.00')
+    expect(wrapper.text()).not.toContain('$46.00 / $100.00')
+    expect(wrapper.find('[data-testid="group-quota-5h-bar"] > div').attributes('style')).toContain('width: 62.5%')
+    expect(wrapper.find('[data-testid="group-quota-7d-bar"] > div').attributes('style')).toContain('width: 74.6%')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(String(fetchMock.mock.calls[1][0])).toContain('/v1/sub2api/quota')
+
+    wrapper.unmount()
+  })
+
   it('queries the current local calendar date near midnight', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 6, 13, 0, 30))
@@ -288,21 +341,18 @@ describe('KeyUsageView subscription feature flag', () => {
     return wrapper
   }
 
-  it('labels the wallet row "Subscription Type" while subscriptions are enabled', async () => {
+  it('does not render wallet balance details while subscriptions are enabled', async () => {
     const wrapper = await mountAndQuery()
 
-    expect(wrapper.text()).toContain('Subscription Type')
-    expect(wrapper.text()).toContain('Wallet Balance')
+    expect(wrapper.text()).not.toContain('Wallet Balance')
     wrapper.unmount()
   })
 
-  it('drops the "Subscription" wording from the wallet row when subscriptions are disabled', async () => {
+  it('does not render wallet balance details when subscriptions are disabled', async () => {
     appStoreState.cachedPublicSettings = { subscription_enabled: false }
     const wrapper = await mountAndQuery()
 
-    expect(wrapper.text()).toContain('Billing Type')
-    expect(wrapper.text()).not.toContain('Subscription Type')
-    expect(wrapper.text()).toContain('Wallet Balance')
+    expect(wrapper.text()).not.toContain('Wallet Balance')
     wrapper.unmount()
   })
 })

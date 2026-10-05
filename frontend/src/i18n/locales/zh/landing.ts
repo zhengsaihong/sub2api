@@ -165,6 +165,9 @@ export default {
     subscriptionType: '订阅类型',
     billingType: '计费方式',
     subscriptionExpires: '订阅到期',
+    groupQuota: '账号总额度',
+    groupQuota5h: '5 小时剩余',
+    groupQuota7d: '7 天剩余',
     // Usage stat cells
     todayRequests: '今日请求',
     todayInputTokens: '今日输入',

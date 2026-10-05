@@ -165,6 +165,9 @@ export default {
     subscriptionType: 'Subscription Type',
     billingType: 'Billing Type',
     subscriptionExpires: 'Subscription Expires',
+    groupQuota: 'Total Account Quota',
+    groupQuota5h: '5-Hour Remaining',
+    groupQuota7d: '7-Day Remaining',
     // Usage stat cells
     todayRequests: 'Today Requests',
     todayInputTokens: 'Today Input',

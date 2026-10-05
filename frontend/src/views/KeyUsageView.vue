@@ -167,6 +167,41 @@
             </div>
           </div>
 
+          <div
+            v-if="groupQuota"
+            class="fade-up rounded-2xl border border-gray-200 bg-white/90 p-6 backdrop-blur-sm dark:border-dark-700 dark:bg-dark-900/90"
+          >
+            <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400 mb-5">
+              {{ t('keyUsage.groupQuota') }}
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div v-if="groupQuota.remaining_5h_percent != null">
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-gray-700 dark:text-dark-200">{{ t('keyUsage.groupQuota5h') }}</span>
+                  <span class="text-sm font-semibold tabular-nums text-emerald-500">约 {{ Math.round(groupQuota.remaining_5h_percent) }}%</span>
+                </div>
+                <div data-testid="group-quota-5h-bar" class="mt-3 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
+                  <div
+                    class="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                    :style="{ width: `${groupQuota.remaining_5h_percent}%` }"
+                  ></div>
+                </div>
+              </div>
+              <div v-if="groupQuota.remaining_7d_percent != null">
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-gray-700 dark:text-dark-200">{{ t('keyUsage.groupQuota7d') }}</span>
+                  <span class="text-sm font-semibold tabular-nums text-emerald-500">约 {{ Math.round(groupQuota.remaining_7d_percent) }}%</span>
+                </div>
+                <div data-testid="group-quota-7d-bar" class="mt-3 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
+                  <div
+                    class="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                    :style="{ width: `${groupQuota.remaining_7d_percent}%` }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Ring Cards Grid -->
           <div v-if="ringItems.length > 0" :class="ringGridClass">
             <div
@@ -212,24 +247,17 @@
                     </defs>
                   </svg>
                   <div class="absolute inset-0 flex flex-col items-center justify-center">
-                    <template v-if="ring.isBalance">
-                      <span class="text-2xl font-bold tabular-nums" :style="{ color: RING_GRADIENTS[i % 4].from }">
-                        {{ ring.amount }}
-                      </span>
-                    </template>
-                    <template v-else>
-                      <span class="text-3xl font-bold tabular-nums text-gray-900 dark:text-white">
-                        {{ displayPcts[i] ?? 0 }}%
-                      </span>
-                      <span class="text-xs text-gray-500 dark:text-dark-400 mt-0.5">{{ t('keyUsage.used') }}</span>
-                      <span
-                        class="text-sm font-semibold mt-1 tabular-nums"
-                        :style="{ color: RING_GRADIENTS[i % 4].from }"
-                      >{{ ring.amount }}</span>
-                      <p v-if="ring.resetAt && formatResetTime(ring.resetAt)" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
-                        ⟳ {{ formatResetTime(ring.resetAt) }}
-                      </p>
-                    </template>
+                    <span class="text-3xl font-bold tabular-nums text-gray-900 dark:text-white">
+                      {{ displayPcts[i] ?? 0 }}%
+                    </span>
+                    <span class="text-xs text-gray-500 dark:text-dark-400 mt-0.5">{{ t('keyUsage.used') }}</span>
+                    <span
+                      class="text-sm font-semibold mt-1 tabular-nums"
+                      :style="{ color: RING_GRADIENTS[i % 4].from }"
+                    >{{ ring.amount }}</span>
+                    <p v-if="ring.resetAt && formatResetTime(ring.resetAt)" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
+                      ⟳ {{ formatResetTime(ring.resetAt) }}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -460,6 +488,10 @@ const showLoading = ref(false)
 const showDatePicker = ref(false)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const resultData = ref<any>(null)
+const groupQuota = ref<{
+  remaining_5h_percent?: number
+  remaining_7d_percent?: number
+} | null>(null)
 const now = ref(new Date())
 let resetTimer: ReturnType<typeof setInterval> | null = null
 
@@ -544,14 +576,12 @@ interface RingItem {
   title: string
   pct: number
   amount: string
-  isBalance?: boolean
   iconType: 'clock' | 'calendar' | 'dollar'
   resetAt?: string | null
 }
 
 function getRingOffset(ring: RingItem): number {
   if (!ringAnimated.value) return CIRCUMFERENCE
-  if (ring.isBalance) return 0
   return CIRCUMFERENCE - (Math.min(ring.pct, 100) / 100) * CIRCUMFERENCE
 }
 
@@ -567,7 +597,7 @@ function triggerRingAnimation(items: RingItem[]) {
         // Animate percentage numbers
         const duration = 1000
         const startTime = performance.now()
-        const targets = items.map(item => item.isBalance ? 0 : item.pct)
+        const targets = items.map(item => item.pct)
 
         function tick() {
           const elapsed = performance.now() - startTime
@@ -603,7 +633,7 @@ const statusInfo = computed(() => {
   }
 
   return {
-    label: data.planName || t('keyUsage.walletBalance'),
+    label: data.planName || t('keyUsage.billingType'),
     statusText: 'Active',
     isActive: true,
   }
@@ -611,7 +641,7 @@ const statusInfo = computed(() => {
 
 const ringItems = computed<RingItem[]>(() => {
   const data = resultData.value
-  if (!data) return []
+  if (!data || groupQuota.value) return []
 
   const items: RingItem[] = []
 
@@ -649,9 +679,6 @@ const ringItems = computed<RingItem[]>(() => {
         }
       }
     }
-    if (!data.subscription && data.balance != null) {
-      items.push({ title: t('keyUsage.walletBalance'), pct: 0, amount: usd(data.balance), isBalance: true, iconType: 'dollar' })
-    }
   }
 
   return items
@@ -681,7 +708,7 @@ function getUsageColor(pct: number): string {
 
 const detailRows = computed<DetailRow[]>(() => {
   const data = resultData.value
-  if (!data) return []
+  if (!data || groupQuota.value) return []
 
   const rows: DetailRow[] = []
   const ICON_SHIELD = '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'
@@ -728,12 +755,13 @@ const detailRows = computed<DetailRow[]>(() => {
       }
     }
   } else {
-    rows.push({
-      iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_CHECK,
-      // 订阅功能关闭后这一行只会是「钱包余额」，标签改用不带「订阅」字样的「计费方式」。
-      label: subscriptionFeatureEnabled.value ? t('keyUsage.subscriptionType') : t('keyUsage.billingType'),
-      value: data.planName || t('keyUsage.walletBalance'), valueClass: '',
-    })
+    if (data.planName) {
+      rows.push({
+        iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_CHECK,
+        label: subscriptionFeatureEnabled.value ? t('keyUsage.subscriptionType') : t('keyUsage.billingType'),
+        value: data.planName, valueClass: '',
+      })
+    }
 
     if (data.subscription) {
       const sub = data.subscription
@@ -790,14 +818,13 @@ const usageStatCells = computed<StatCell[]>(() => {
   const today = usage.today || {}
   const total = usage.total || {}
 
-  return [
+  const cells: StatCell[] = [
     { label: t('keyUsage.todayRequests'), value: fmtNum(today.requests) },
     { label: t('keyUsage.todayInputTokens'), value: fmtNum(today.input_tokens) },
     { label: t('keyUsage.todayOutputTokens'), value: fmtNum(today.output_tokens) },
     { label: t('keyUsage.todayTokens'), value: fmtNum(today.total_tokens) },
     { label: t('keyUsage.todayCacheCreation'), value: fmtNum(today.cache_creation_tokens) },
     { label: t('keyUsage.todayCacheRead'), value: fmtNum(today.cache_read_tokens) },
-    { label: t('keyUsage.todayCost'), value: usd(today.actual_cost) },
     { label: t('keyUsage.rpmTpm'), value: `${usage.rpm || 0} / ${usage.tpm || 0}` },
     { label: t('keyUsage.totalRequests'), value: fmtNum(total.requests) },
     { label: t('keyUsage.totalInputTokens'), value: fmtNum(total.input_tokens) },
@@ -805,9 +832,14 @@ const usageStatCells = computed<StatCell[]>(() => {
     { label: t('keyUsage.totalTokensLabel'), value: fmtNum(total.total_tokens) },
     { label: t('keyUsage.totalCacheCreation'), value: fmtNum(total.cache_creation_tokens) },
     { label: t('keyUsage.totalCacheRead'), value: fmtNum(total.cache_read_tokens) },
-    { label: t('keyUsage.totalCost'), value: usd(total.actual_cost) },
     { label: t('keyUsage.avgDuration'), value: usage.average_duration_ms ? `${Math.round(usage.average_duration_ms)} ms` : '-' },
   ]
+
+  if (!groupQuota.value) {
+    cells.splice(6, 0, { label: t('keyUsage.todayCost'), value: usd(today.actual_cost) })
+    cells.splice(cells.length - 1, 0, { label: t('keyUsage.totalCost'), value: usd(total.actual_cost) })
+  }
+  return cells
 })
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -861,6 +893,25 @@ function getBrowserTimezone(): string {
 // ==================== API Query ====================
 
 async function fetchUsage(key: string) {
+  if (import.meta.env.DEV && key === 'sk-local-demo') {
+    return {
+      mode: 'quota_limited',
+      isValid: true,
+      status: 'active',
+      quota: { limit: 100, used: 28, remaining: 72, unit: 'USD' },
+      rate_limits: [
+        { window: '5h', used: 32, limit: 100, reset_at: null },
+        { window: '7d', used: 46, limit: 100, reset_at: null },
+      ],
+      usage: {
+        today: { requests: 12, input_tokens: 1200, output_tokens: 800, cache_creation_tokens: 0, cache_read_tokens: 0, total_tokens: 2000, actual_cost: 0.12 },
+        total: { requests: 48, input_tokens: 5200, output_tokens: 3100, cache_creation_tokens: 0, cache_read_tokens: 0, total_tokens: 8300, actual_cost: 0.48 },
+        rpm: 2,
+        tpm: 180,
+      },
+      daily_usage: [],
+    }
+  }
   const dateParams = getDateParams()
   const url = buildGatewayUrl('/v1/usage') + (dateParams ? '?' + dateParams : '')
   const res = await fetch(url, {
@@ -872,6 +923,26 @@ async function fetchUsage(key: string) {
     throw new Error(msg)
   }
   return await res.json()
+}
+
+async function fetchGroupQuota(key: string) {
+  if (import.meta.env.DEV && key === 'sk-local-demo') {
+    return { remaining_5h_percent: 68, remaining_7d_percent: 54 }
+  }
+  const res = await fetch(buildGatewayUrl('/v1/sub2api/quota'), {
+    headers: { 'Authorization': 'Bearer ' + key },
+  })
+  if (!res.ok) return null
+  const data = await res.json()
+  const normalize = (value: unknown): number | undefined => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+    return Math.min(100, Math.max(0, value))
+  }
+  const quota = {
+    remaining_5h_percent: normalize(data?.remaining_5h_percent),
+    remaining_7d_percent: normalize(data?.remaining_7d_percent),
+  }
+  return quota.remaining_5h_percent == null && quota.remaining_7d_percent == null ? null : quota
 }
 
 async function queryKey() {
@@ -886,10 +957,16 @@ async function queryKey() {
   showResults.value = true
   showLoading.value = true
   resultData.value = null
+  groupQuota.value = null
 
   try {
     const data = await fetchUsage(key)
     resultData.value = data
+    try {
+      groupQuota.value = await fetchGroupQuota(key)
+    } catch {
+      groupQuota.value = null
+    }
     showLoading.value = false
     showDatePicker.value = true
 

@@ -58,6 +58,16 @@ func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string
 	return router
 }
 
+func TestGatewayRoutesKeyQuotaInfoPathIsRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+	for _, route := range router.Routes() {
+		if route.Method == http.MethodGet && route.Path == "/v1/sub2api/quota" {
+			return
+		}
+	}
+	t.Fatal("GET /v1/sub2api/quota should be registered")
+}
+
 func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {
 	router := newGatewayRoutesTestRouter()
 
